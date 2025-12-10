@@ -3,7 +3,7 @@ import numpy as np
 import pandas
 import multiprocessing
 from pathlib import Path
-import utils
+from preprocessing import utils
 import logging
 import argparse
 

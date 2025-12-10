@@ -1,4 +1,26 @@
-# 📦 LUNA25 Baseline Algorithm
+📦 LUNA25 Baseline Algorithm
+
+Run server
+```bash
+uvicorn server:app --reload
+```
+
+Import cURL in postman to send request (remember to include mha file in the request)
+```bash
+curl --location 'localhost:8000/api/v1/predict/lesion' \
+--form 'file=@"/D:/luna_data/luna25_images_sample/1.3.6.1.4.1.14519.5.2.1.7009.9004.302654768337221344067573753621.mha"' \
+--form 'seriesInstanceUID="1.3.6.1.4.1.14519.5.2.1.7009.9004.302654768337221344067573753621"' \
+--form 'patientID="212849"' \
+--form 'studyDate="20000102"' \
+--form 'lesionID="2"' \
+--form 'coordX="108.05"' \
+--form 'coordY="67.82"' \
+--form 'coordZ="-227.01"' \
+--form 'ageAtStudyDate="72"' \
+--form 'gender="Female"'
+```
+
+<!-- # 📦 LUNA25 Baseline Algorithm
 Thank you for participating in the [LUNA25 Challenge](https://luna25.grand-challenge.org/).
 
 In LUNA25, we want to use artificial intelligence for lung nodule malignancy risk estimation on low-dose chest CT scans. For this, we have prepared two baseline models (2D and 3D model) that can help you get started. 
@@ -100,4 +122,4 @@ While this baseline provides a starting point, participants are encouraged to:
 
 For questions, refer to the [LUNA25 Challenge Page](https://luna25.grand-challenge.org/).
 
-Good luck!
+Good luck! -->

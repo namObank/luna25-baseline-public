@@ -1,5 +1,6 @@
 import math
 import os
+import logging
 
 import numpy as np
 import torch
@@ -260,8 +261,58 @@ class I3D(torch.nn.Module):
                 use_bias=True,
                 use_bn=False,
             )
-            # load model
-            self.load_state_dict(torch.load(config.MODEL_RGB_I3D))
+            # load model with weights_only=False for PyTorch 2.6+ compatibility
+            try:
+                # Tải file pre-trained vào một biến tạm
+                pretrained_dict = torch.load(config.MODEL_RGB_I3D, map_location='cpu')
+                # Lấy state_dict "trống" của mô hình
+                model_dict = self.state_dict()
+
+                # Tạo một từ điển mới để lưu các key đã được "dịch"
+                new_state_dict = {}
+
+                # Vòng lặp "dịch" các key
+                for old_key, weights in pretrained_dict.items():
+                    # 1. Chuyển 'Conv3d' -> 'conv3d' và 'Mixed' -> 'mixed'
+                    new_key = old_key.replace('Conv3d', 'conv3d').replace('Mixed', 'mixed')
+
+                    # 2. "Dịch" tên các nhánh (branch)
+                    new_key = new_key.replace('.b0.', '.branch_0.')
+                    new_key = new_key.replace('.b1a.', '.branch_1.0.')
+                    new_key = new_key.replace('.b1b.', '.branch_1.1.')
+                    new_key = new_key.replace('.b2a.', '.branch_2.0.')
+                    new_key = new_key.replace('.b2b.', '.branch_2.1.')
+                    new_key = new_key.replace('.b3b.', '.branch_3.1.')
+
+                    # 3. "Dịch" lớp Batch Norm: '.bn.' -> '.batch3d.'
+                    new_key = new_key.replace('.bn.', '.batch3d.')
+
+                    # 4. "Dịch" lớp classifier cuối: 'logits.conv3d.' -> 'conv3d_0c_1x1.'
+                    new_key = new_key.replace('logits.conv3d.', 'conv3d_0c_1x1.')
+
+                    # 5. Nếu key mới (đã dịch) tồn tại trong mô hình của bạn,
+                    #    và có cùng kích thước (shape) thì thêm vào
+                    if new_key in model_dict:
+                        if model_dict[new_key].shape == weights.shape:
+                            new_state_dict[new_key] = weights
+                        else:
+                            # Báo cáo nếu key khớp nhưng shape không khớp (ví dụ: lớp classifier cuối)
+                            logging.info(f"Skipping {new_key}: shape mismatch")
+                    # else:
+                    #    logging.info(f"Skipping {old_key}: not found in model") # Bỏ qua các key không cần thiết
+
+                # Cập nhật model_dict với các trọng số đã được "dịch"
+                model_dict.update(new_state_dict)
+
+                # Tải state_dict mới vào mô hình.
+                # strict=False nghĩa là chúng ta chấp nhận việc không tải 1 số key
+                # (ví dụ: lớp classifier cuối của I3D gốc có 400 lớp, của bạn chỉ có 1)
+                self.load_state_dict(model_dict, strict=False)
+
+                logging.info("✅ Successfully loaded and remapped pre-trained weights!")
+            except TypeError:
+                # Fallback for older PyTorch versions that don't support weights_only
+                self.load_state_dict(torch.load(config.MODEL_RGB_I3D))
 
         # freeze batchnorm
         self.train()

@@ -18,10 +18,10 @@ COPY --chown=user:user results /opt/app/resources
 # You can add any Python dependencies to requirements.txt
 RUN python -m pip install \
     --user \
-    --no-cache-dir \
+    # --no-cache-dir \
     --no-color \
     --requirement /opt/app/requirements.txt
 
-COPY --chown=user:user inference.py /opt/app/
+COPY --chown=user:user train.py /opt/app/
 
-ENTRYPOINT ["python", "inference.py"]
+ENTRYPOINT ["python", "train.py"]

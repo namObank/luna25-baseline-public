@@ -4,7 +4,7 @@ from pathlib import Path
 import SimpleITK as sitk
 import multiprocessing
 import logging
-import utils
+from preprocessing import utils
 
 logging.basicConfig(
     level=logging.INFO,
@@ -157,23 +157,23 @@ class NoduleExtractor:
                     logging.info(f"Missing mha file: {str(image_path)}")
 
 
-if __name__ == "__main__":
+# if __name__ == "__main__":
   
-    extractor = NoduleExtractor(
-        csv_path=Path(
-            <PATH-TO-CSV>
-        ),
-        image_root=Path(<PATH-TO-IMAGES>),
-        output_path=Path(
-            <PATH-TO-OUTPUT>
-        ),
-        postfix="_0000",
-        save_format=".nii.gz",
-    )
+#     extractor = NoduleExtractor(
+#         csv_path=Path(
+#             <PATH-TO-CSV>
+#         ),
+#         image_root=Path(<PATH-TO-IMAGES>),
+#         output_path=Path(
+#             <PATH-TO-OUTPUT>
+#         ),
+#         postfix="_0000",
+#         save_format=".nii.gz",
+#     )
 
-    pool = multiprocessing.Pool(16)
-    pool.map(
-        extractor.process_seriesuid,
-        extractor.dataset.SeriesInstanceUID.unique(),
-    )
-    pool.close()
+#     pool = multiprocessing.Pool(16)
+#     pool.map(
+#         extractor.process_seriesuid,
+#         extractor.dataset.SeriesInstanceUID.unique(),
+#     )
+#     pool.close()
