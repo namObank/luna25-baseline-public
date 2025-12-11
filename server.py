@@ -22,6 +22,16 @@ import time
 
 app = FastAPI()
 
+
+# device = torch.device("cuda:0")
+device = "cpu"
+
+# Khởi tạo Dual I3D
+model = DualPathI3DNet(
+    num_classes=1, 
+    input_channels=1 # Input thực tế là 1 kênh, I3D sẽ tự expand
+).to(device)
+
 @app.post("/api/v1/predict/lesion")
 async def upload_files(
     # csv_file: UploadFile = File(...),
@@ -127,19 +137,11 @@ async def upload_files(
         size_px=config.SIZE_PX,
     )
 
-    # device = torch.device("cuda:0")
-    device = "cpu"
-
     start = time.perf_counter()
 
 
     # inference với model
     # model = ResNet34().to(device)
-    # Khởi tạo Dual I3D
-    model = DualPathI3DNet(
-        num_classes=1, 
-        input_channels=1 # Input thực tế là 1 kênh, I3D sẽ tự expand
-    ).to(device)
 
     
     index = 0
