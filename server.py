@@ -18,6 +18,7 @@ from models.i3d import DualPathI3DNet
 from models.model_3d_resnet import LungNodule3DResNet
 from models.model_3d_resnetSE import LungNodule3DSEResNet
 from models.dual_path_model import DualPathLungNoduleNet
+import time
 
 app = FastAPI()
 
@@ -129,6 +130,7 @@ async def upload_files(
     # device = torch.device("cuda:0")
     device = "cpu"
 
+    start = time.perf_counter()
 
 
     # inference với model
@@ -171,16 +173,28 @@ async def upload_files(
             print(f"Result {y}")
     # """
 
-    # Trả metadata CSV + MHA
+    # Trả ra kết quả
+    lesionIdInt = int(lesionID)
+    if lesionIdInt >= y_pred.size(0):
+        raise TypeError("Index cho tensor 1D phải là int")
+
+    pred_label = int(y[lesionIdInt].item())
+    prob = y_pred[lesionIdInt].item()
+
+
+    end = time.perf_counter()
+    elapsed_ms = (end - start) * 1000  # to milliseconds
+    print(f"Execution time: {elapsed_ms:.3f} ms")
+
     return {
-        "csv": {
-            # "filename": csv_file.filename,
-            "columns": df.columns.tolist(),
-            "rows": len(df)
-        },
-        "mha": {
-            "filename": file.filename,
-            "size": image.GetSize(),
-            "spacing": image.GetSpacing()
+        "status": "success",
+        "data": {
+            "seriesInstanceUID": seriesInstanceUID,
+            "lesionID": lesionIdInt,
+            "probability": prob,
+            "predictionLabel": pred_label,
+            "processingTimeMs": int(elapsed_ms)
         }
     }
+
+
