@@ -1,6 +1,18 @@
 📦 LUNA25 Baseline Algorithm
 
-1. To test the code, run server directly from source
+1. Prepare environment and test the code
+
+Install python 3.10
+
+Note: first, copy the resource folder containing *pth files into this repo
+
+Install packages
+
+```bash
+pip install -r requirements.txt
+```
+
+To test the code, run server directly from source
 ```bash
 uvicorn server:app --reload
 ```
