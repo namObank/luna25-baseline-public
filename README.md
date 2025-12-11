@@ -16,6 +16,10 @@ To test the code, run server directly from source
 ```bash
 uvicorn server:app --reload
 ```
+Alternatively
+```bash
+uvicorn main:app --reload --host 0.0.0.0 --port 8000
+```
 
 Import cURL in postman to send request (remember to include mha file in the request)
 ```bash
