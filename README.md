@@ -1,6 +1,6 @@
 📦 LUNA25 Baseline Algorithm
 
-Run server
+1. To test the code, run server directly from source
 ```bash
 uvicorn server:app --reload
 ```
@@ -18,6 +18,18 @@ curl --location 'localhost:8000/api/v1/predict/lesion' \
 --form 'coordZ="-227.01"' \
 --form 'ageAtStudyDate="72"' \
 --form 'gender="Female"'
+```
+
+2. Containerizing 
+
+Packaging
+```bash
+docker build -t <image_name> .
+```
+
+Running (specify your port as needed)
+```bash
+docker run -it --rm -p 8000:8000 <image_name>
 ```
 
 <!-- # 📦 LUNA25 Baseline Algorithm

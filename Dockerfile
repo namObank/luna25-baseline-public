@@ -1,27 +1,40 @@
-FROM --platform=linux/amd64 pytorch/pytorch AS example-algorithm-amd64
-# Use a 'large' base container to show-case how to load pytorch and use the GPU (when enabled)
+# Base image
+FROM python:3.10-slim
+
+# # Base image Ubuntu
+# FROM ubuntu:22.04
+
+# # install tools
+# RUN apt-get update && apt-get install -y --no-install-recommends \
+#         python3.10 \
+#         python3.10-venv \
+#         python3.10-dev \
+#         python3-pip \
+#         bash \
+#         vim \
+#         curl \
+#         wget \
+#         git \
+#         build-essential \
+#         libssl-dev \
+#         libffi-dev \
+#     && rm -rf /var/lib/apt/lists/*
+
 
 # Ensures that Python output to stdout/stderr is not buffered: prevents missing information when terminating
 ENV PYTHONUNBUFFERED=1
 
-RUN groupadd -r user && useradd -m --no-log-init -r -g user user
-USER user
+# Set working dir
+WORKDIR .
 
-WORKDIR /opt/app
+# Copy code
+COPY . .
 
-# Copy files to the container
-COPY --chown=user:user requirements.txt processor.py dataloader.py experiment_config.py /opt/app/
-COPY --chown=user:user models /opt/app/models
-COPY --chown=user:user results /opt/app/resources
-# COPY --chown=user:user test /opt/app/test
+# Install dependencies
+RUN pip install --no-cache-dir -r requirements.txt
 
-# You can add any Python dependencies to requirements.txt
-RUN python -m pip install \
-    --user \
-    # --no-cache-dir \
-    --no-color \
-    --requirement /opt/app/requirements.txt
+# Expose port
+EXPOSE 8000
 
-COPY --chown=user:user train.py /opt/app/
-
-ENTRYPOINT ["python", "train.py"]
+# Run server
+CMD ["uvicorn", "server:app", "--host", "0.0.0.0", "--port", "8000"]
