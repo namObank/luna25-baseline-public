@@ -1,10 +1,7 @@
-import math
-import os
 import logging
 import numpy as np
 import torch
 import torch.nn as nn
-import torch.nn.functional as F
 from experiment_config import config
 
 # =============================================================================
@@ -163,42 +160,29 @@ class Mixed(torch.nn.Module):
         out_3 = self.branch_3(inp)
         out = torch.cat((out_0, out_1, out_2, out_3), 1)
         return out
-
-# =============================================================================
-# PHẦN 2: I3D MODEL CHÍNH (UPDATED FOR DUAL PATH & CT SCANS)
-# =============================================================================
-
-class I3D(torch.nn.Module):
+    
+class I3D_Backbone(torch.nn.Module):
     def __init__(
         self,
-        num_classes,
-        input_channels=1, # Mặc định là 1 cho ảnh CT
+        input_channels=1,
         modality="rgb",
         dropout_prob=0,
         name="inception",
         pre_trained=True,
-        freeze_bn=True,
-        return_features=False, # Cờ mới: True để lấy vector đặc trưng (1024)
+        freeze_bn=True
     ):
-        super(I3D, self).__init__()
+        super(I3D_Backbone, self).__init__()
         self.name = name
-        self.num_classes = num_classes
         self.freeze_bn = freeze_bn
-        self.return_features = return_features 
         self.input_channels = input_channels
         
-        if modality == "rgb":
-            in_channels = 3
-        elif modality == "flow":
-            in_channels = 2
-        else:
-            raise ValueError(f"{modality} not among known modalities [rgb|flow]")
-        
+        if modality == "rgb": in_channels = 3
+        elif modality == "flow": in_channels = 2
+        else: raise ValueError(f"{modality} not among known modalities")
         self.modality = modality
 
         # --- KHỞI TẠO CÁC LAYER INCEPTION ---
-        conv3d_1a_7x7 = Unit3Dpy(out_channels=64, in_channels=in_channels, kernel_size=(7, 7, 7), stride=(2, 2, 2), padding="SAME")
-        self.conv3d_1a_7x7 = conv3d_1a_7x7
+        self.conv3d_1a_7x7 = Unit3Dpy(out_channels=64, in_channels=in_channels, kernel_size=(7, 7, 7), stride=(2, 2, 2), padding="SAME")
         self.maxPool3d_2a_3x3 = MaxPool3dTFPadding(kernel_size=(1, 3, 3), stride=(1, 2, 2), padding="SAME")
         self.conv3d_2b_1x1 = Unit3Dpy(out_channels=64, in_channels=64, kernel_size=(1, 1, 1), padding="SAME")
         self.conv3d_2c_3x3 = Unit3Dpy(out_channels=192, in_channels=64, kernel_size=(3, 3, 3), padding="SAME")
@@ -215,72 +199,35 @@ class I3D(torch.nn.Module):
         self.mixed_5b = Mixed(832, [256, 160, 320, 32, 128, 128])
         self.mixed_5c = Mixed(832, [384, 192, 384, 48, 128, 128])
 
-        # --- MODIFICATION: Sửa Pooling để chạy được với input nhỏ (64x64x64) ---
-        # Dùng AdaptiveAvgPool3d(1) thay vì AvgPool3d((2, 7, 7)) cố định
-        self.avg_pool = torch.nn.AdaptiveAvgPool3d(1)
-        
-        self.dropout = torch.nn.Dropout(dropout_prob)
-
-        # Lớp Classifier (Chỉ dùng khi return_features=False)
-        self.conv3d_0c_1x1 = Unit3Dpy(
-            in_channels=1024, 
-            out_channels=self.num_classes, 
-            kernel_size=(1, 1, 1), 
-            activation=None, 
-            use_bias=True, 
-            use_bn=False
-        )
-
-        # --- LOGIC LOAD WEIGHTS ĐẦY ĐỦ ---
+        # Load Weights
         if pre_trained:
-            logging.info(f"⏳ Loading I3D weights from {config.MODEL_RGB_I3D}...")
-            try:
-                # Load file checkpoint
-                pretrained_dict = torch.load(config.MODEL_RGB_I3D, map_location='cpu')
-                model_dict = self.state_dict()
-                
-                new_state_dict = {}
-                loaded_count = 0
+            self._load_pretrained_weights()
 
-                for old_key, weights in pretrained_dict.items():
-                    # Mapping tên biến từ file gốc sang cấu trúc class hiện tại
-                    new_key = old_key.replace('Conv3d', 'conv3d').replace('Mixed', 'mixed')
-                    new_key = new_key.replace('.b0.', '.branch_0.')
-                    new_key = new_key.replace('.b1a.', '.branch_1.0.')
-                    new_key = new_key.replace('.b1b.', '.branch_1.1.')
-                    new_key = new_key.replace('.b2a.', '.branch_2.0.')
-                    new_key = new_key.replace('.b2b.', '.branch_2.1.')
-                    new_key = new_key.replace('.b3b.', '.branch_3.1.')
-                    
-                    # Mapping BN
-                    new_key = new_key.replace('.bn.', '.batch3d.')
-                    
-                    # Mapping Classifier
-                    new_key = new_key.replace('logits.conv3d.', 'conv3d_0c_1x1.')
-
-                    # Kiểm tra và nạp
-                    if new_key in model_dict:
-                        if model_dict[new_key].shape == weights.shape:
-                            new_state_dict[new_key] = weights
-                            loaded_count += 1
-                        else:
-                            # Bỏ qua lớp cuối nếu số class không khớp (ví dụ 400 vs 1)
-                            pass
-                
-                model_dict.update(new_state_dict)
-                self.load_state_dict(model_dict, strict=False)
-                logging.info(f"✅ Successfully loaded {loaded_count} layers from I3D Pre-trained.")
-                
-            except Exception as e:
-                logging.error(f"❌ Weight loading failed: {e}")
-
-        # Freeze Batch Norm nếu cần
         if self.freeze_bn:
-            self.train() # Gọi hàm train custom bên dưới
+            self.train()
+
+    def _load_pretrained_weights(self):
+        logging.info(f"⏳ Loading I3D weights from {config.MODEL_RGB_I3D}...")
+        try:
+            pretrained_dict = torch.load(config.MODEL_RGB_I3D, map_location='cpu')
+            model_dict = self.state_dict()
+            new_state_dict = {}
+            for old_key, weights in pretrained_dict.items():
+                new_key = old_key.replace('Conv3d', 'conv3d').replace('Mixed', 'mixed')
+                new_key = new_key.replace('.b0.', '.branch_0.').replace('.b1a.', '.branch_1.0.')
+                new_key = new_key.replace('.b1b.', '.branch_1.1.').replace('.b2a.', '.branch_2.0.')
+                new_key = new_key.replace('.b2b.', '.branch_2.1.').replace('.b3b.', '.branch_3.1.')
+                new_key = new_key.replace('.bn.', '.batch3d.')
+                if new_key in model_dict and model_dict[new_key].shape == weights.shape:
+                    new_state_dict[new_key] = weights
+            model_dict.update(new_state_dict)
+            self.load_state_dict(model_dict, strict=False)
+            logging.info(f"✅ I3D Backbone Loaded.")
+        except Exception as e:
+            logging.error(f"❌ Weight loading failed: {e}")
 
     def train(self, mode=True):
-        """Override train để đóng băng BN layers"""
-        super(I3D, self).train(mode)
+        super(I3D_Backbone, self).train(mode)
         if self.freeze_bn:
             for m in self.modules():
                 if isinstance(m, torch.nn.BatchNorm3d):
@@ -289,11 +236,9 @@ class I3D(torch.nn.Module):
                     m.bias.requires_grad = False
 
     def forward(self, inp):
-        # 1. Tự động Expand channel nếu đầu vào là 1 kênh (CT) nhưng model cần 3 (RGB)
-        if self.input_channels == 3 and inp.shape[1] == 1:
+        if inp.shape[1] == 1:
             inp = inp.expand(-1, 3, -1, -1, -1)
-            
-        # 2. Forward Pass qua backbone
+        
         out = self.conv3d_1a_7x7(inp)
         out = self.maxPool3d_2a_3x3(out)
         out = self.conv3d_2b_1x1(out)
@@ -309,86 +254,117 @@ class I3D(torch.nn.Module):
         out = self.mixed_4f(out)
         out = self.maxPool3d_5a_2x2(out)
         out = self.mixed_5b(out)
-        out = self.mixed_5c(out) # Output shape tại đây: [Batch, 1024, D', H', W']
+        # Output shape: [Batch, 1024, Depth, Height, Width]
+        out = self.mixed_5c(out) 
+        return out
 
-        # 3. Pooling & Dropout
-        out = self.avg_pool(out) # [Batch, 1024, 1, 1, 1]
-        out = self.dropout(out)
+# =============================================================================
+# PHẦN 2: TRANSFORMER I3D (Pulse3D Style)
+# =============================================================================
 
-        # 4. LOGIC CHO DUAL PATH: Trả về Features
-        if self.return_features:
-            # Trả về vector đặc trưng [Batch, 1024] để nối với nhánh kia
-            return out.view(out.size(0), -1)
+class TransformerI3D(nn.Module):
+    def __init__(
+        self,
+        num_classes=1,
+        input_channels=1,
+        input_size=(64, 64, 64), # Kích thước đầu vào chuẩn
+        num_heads=8,
+        num_layers=5,
+        embed_dim=1024, # Output channel của I3D là 1024
+        dropout=0.1
+    ):
+        super(TransformerI3D, self).__init__()
+        logging.info("🌟 Initializing I3D + Transformer Head...")
+
+        # 1. Backbone: I3D (Feature Extractor)
+        self.backbone = I3D_Backbone(input_channels=input_channels, pre_trained=False)
         
-        # 5. Logic Cũ: Classification (Dùng khi chạy đơn lẻ)
-        out = self.conv3d_0c_1x1(out)
-        out = out.mean(2).reshape(out.shape[0]) # [Batch]
-        # out = out.mean(2).view(out.size(0), -1) # Giữ shape [Batch, 1]
+        # 2. Tính toán kích thước chuỗi token (Sequence Length)
+        # Chạy thử một pass giả để biết feature map ra bao nhiêu
+        with torch.no_grad():
+            dummy = torch.zeros(1, input_channels, *input_size)
+            features = self.backbone(dummy)
+            # features shape: [1, 1024, D', H', W']
+            self.feat_shape = features.shape[2:]
+            self.num_tokens = self.feat_shape[0] * self.feat_shape[1] * self.feat_shape[2]
+            logging.info(f"   -> Feature Map size: {self.feat_shape}, Num Tokens: {self.num_tokens}")
+
+        # 3. Transformer Components
+        # [CLS] Token
+        self.cls_token = nn.Parameter(torch.zeros(1, 1, embed_dim))
+        
+        # Positional Embedding (Learnable)
+        # Kích thước: [1, Num_Tokens + 1 (CLS), Embed_Dim]
+        self.pos_embed = nn.Parameter(torch.randn(1, self.num_tokens + 1, embed_dim) * 0.02)
+        self.pos_drop = nn.Dropout(p=dropout)
+
+        # Transformer Encoder
+        encoder_layer = nn.TransformerEncoderLayer(
+            d_model=embed_dim,
+            nhead=num_heads,
+            dim_feedforward=embed_dim * 4,
+            dropout=dropout,
+            activation='gelu',
+            batch_first=True,
+            norm_first=True # Pre-Norm (giống Pulse3D)
+        )
+        self.transformer = nn.TransformerEncoder(encoder_layer, num_layers=num_layers)
+
+        # 4. Classification Head (MLP)
+        self.norm = nn.LayerNorm(embed_dim)
+        self.head = nn.Sequential(
+            nn.Linear(embed_dim, embed_dim),
+            nn.GELU(),
+            nn.Dropout(dropout),
+            nn.Linear(embed_dim, num_classes)
+        )
+
+        # Init weights cho phần mới
+        nn.init.trunc_normal_(self.pos_embed, std=0.02)
+        nn.init.trunc_normal_(self.cls_token, std=0.02)
+        self.apply(self._init_weights)
+
+    def _init_weights(self, m):
+        if isinstance(m, nn.Linear):
+            nn.init.trunc_normal_(m.weight, std=0.02)
+            if m.bias is not None:
+                nn.init.constant_(m.bias, 0)
+        elif isinstance(m, nn.LayerNorm):
+            nn.init.constant_(m.bias, 0)
+            nn.init.constant_(m.weight, 1.0)
+
+    def forward(self, x):
+        # 1. CNN Backbone
+        # Input: [B, 1, 64, 64, 64] -> Output: [B, 1024, D, H, W]
+        x = self.backbone(x)
+        
+        # 2. Flatten & Permute
+        # [B, 1024, D, H, W] -> [B, 1024, N] -> [B, N, 1024]
+        x = x.flatten(2).transpose(1, 2)
+        
+        # 3. Add CLS Token & Positional Embedding
+        B = x.shape[0]
+        cls_tokens = self.cls_token.expand(B, -1, -1) # [B, 1, 1024]
+        x = torch.cat((cls_tokens, x), dim=1)         # [B, N+1, 1024]
+        
+        x = x + self.pos_embed
+        x = self.pos_drop(x)
+
+        # 4. Transformer Encoder
+        x = self.transformer(x)
+
+        # 5. Classification Head
+        # Lấy token đầu tiên (CLS token) làm đại diện
+        cls_out = x[:, 0] 
+        cls_out = self.norm(cls_out)
+        out = self.head(cls_out)
+        
         return out
 
 if __name__ == "__main__":
-    # Test thử
-    model = I3D(num_classes=1, input_channels=1, return_features=True)
-    x = torch.rand(2, 1, 64, 64, 64)
+    # Test
+    model = TransformerI3D(num_classes=1, input_channels=1)
+    x = torch.randn(2, 1, 64, 64, 64)
     out = model(x)
-    print("Testing I3D with 1-channel input:")
-    print(f"Input shape: {x.shape}")
-    print(f"Output shape (Features): {out.shape}") # Mong đợi: [2, 1024]
-
-class DualPathI3DNet(nn.Module):
-    def __init__(self, num_classes=1, input_channels=1, dropout_prob=0.5):
-        super(DualPathI3DNet, self).__init__()
-        
-        print("🌟 Initializing DUAL PATH I3D Model...")
-        
-        # --- NHÁNH 1: LOCAL PATH ---
-        # Bật cờ return_features=True để lấy vector 1024
-        self.local_net = I3D(
-            num_classes=num_classes,
-            input_channels=3, # I3D gốc dùng 3 kênh (code sẽ tự expand từ 1->3)
-            modality='rgb',
-            dropout_prob=0.5,
-            return_features=True 
-        )
-        
-        # --- NHÁNH 2: GLOBAL PATH ---
-        self.global_net = I3D(
-            num_classes=num_classes,
-            input_channels=3,
-            modality='rgb',
-            dropout_prob=0.5,
-            return_features=True
-        )
-        
-        # --- FUSION HEAD ---
-        # I3D feature dim = 1024. Hai nhánh = 2048.
-        self.classifier = nn.Sequential(
-            nn.Dropout(dropout_prob),
-            nn.Linear(1024 * 2, 512),
-            nn.ReLU(inplace=True),
-            nn.Dropout(dropout_prob),
-            nn.Linear(512, num_classes)
-        )
-
-    def forward(self, x_local, x_global):
-        """
-        x_local:  [Batch, 1, 64, 64, 64]
-        x_global: [Batch, 1, 64, 128, 128]
-        """
-        
-        # 1. Resize Global về cùng kích thước với Local (64^3)
-        # Để giảm VRAM và đảm bảo I3D chạy mượt
-        if x_global.shape[-1] != x_local.shape[-1]:
-            x_global = F.interpolate(x_global, size=x_local.shape[2:], mode='trilinear', align_corners=False)
-        
-        # 2. Forward qua backbone -> Lấy features [Batch, 1024]
-        feat_local = self.local_net(x_local)
-        feat_global = self.global_net(x_global)
-        
-        # 3. Nối đặc trưng
-        combined = torch.cat([feat_local, feat_global], dim=1) # [Batch, 2048]
-        
-        # 4. Phân loại
-        out = self.classifier(combined)
-        
-        return out
+    print(f"Input: {x.shape}")
+    print(f"Output: {out.shape}")

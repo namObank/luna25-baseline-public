@@ -19,6 +19,7 @@ from models.model_3d_resnet import LungNodule3DResNet
 from models.model_3d_resnetSE import LungNodule3DSEResNet
 from models.dual_path_model import DualPathLungNoduleNet
 import time
+from models.transformerI3D import TransformerI3D
 
 app = FastAPI()
 
@@ -27,11 +28,25 @@ app = FastAPI()
 device = "cpu"
 
 # Khởi tạo Dual I3D
-model = DualPathI3DNet(
-    num_classes=1, 
-    input_channels=1 # Input thực tế là 1 kênh, I3D sẽ tự expand
-).to(device)
+# model = DualPathI3DNet(
+#     num_classes=1, 
+#     input_channels=1 # Input thực tế là 1 kênh, I3D sẽ tự expand
+# ).to(device)
 
+# TRANSFORMER I3D dùng cái này
+model_path = os.path.join("resources", "transformerI3D_F0.pth")
+model = TransformerI3D(
+    num_classes=1, 
+    input_channels=1
+).to(device)
+if os.path.exists(model_path):
+    # Dùng map_location vì device hiện tại là cpu
+    state_dict = torch.load(model_path, map_location=device)
+    model.load_state_dict(state_dict)
+    print(f"Successfully loaded weights from: {model_path}")
+else:
+    print(f"WARNING: Weights file not found at {model_path}")
+    
 @app.post("/api/v1/predict/lesion")
 async def upload_files(
     # csv_file: UploadFile = File(...),
@@ -166,7 +181,10 @@ async def upload_files(
             val_local = val_data["image_local"].to(device)
             val_global = val_data["image_global"].to(device)
             val_labels = val_data["label"].float().to(device)
-            outputs = model(val_local, val_global)
+            # outputs = model(val_local, val_global)
+            # TRANSFORMER I3D dùng cái này
+            outputs = model(val_local)
+
             # loss = loss_function(outputs, val_labels)
             
             # epoch_loss += loss.item()
