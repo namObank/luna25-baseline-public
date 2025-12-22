@@ -18,7 +18,7 @@ uvicorn server:app --reload
 ```
 Alternatively
 ```bash
-uvicorn main:app --reload --host 0.0.0.0 --port 8000
+uvicorn server:app --reload --host 0.0.0.0 --port 8000
 ```
 
 Import cURL in postman to send request (remember to include mha file in the request)
@@ -47,6 +47,145 @@ Running (specify your port as needed)
 ```bash
 docker run -it --rm -p 8000:8000 <image_name>
 ```
+
+Dưới đây là một mẫu **README** mà ông có thể dùng cho project FastAPI, hướng dẫn từ cài đặt môi trường Conda, Linux, Python 3.10, đến build và chạy Docker cho mục đích inference:
+
+---
+
+# Project Name
+
+Mục tiêu: Triển khai FastAPI để phục vụ **inference** mô hình.
+
+## 1. Yêu cầu hệ thống
+
+* Hệ điều hành: Linux (Ubuntu 20.04+ khuyến nghị)
+* Python: 3.10
+* Conda: >= 4.10
+* Docker & Docker Compose: >= 20
+
+---
+
+## 2. Cài đặt môi trường Conda
+
+1. Tạo môi trường Conda với Python 3.10:
+
+```bash
+conda create -n myenv python=3.10 -y
+```
+
+2. Kích hoạt môi trường:
+
+```bash
+conda activate myenv
+```
+
+3. Cài đặt các dependencies:
+
+```bash
+pip install -r requirements.txt
+```
+
+> Ghi chú: `requirements.txt` nên chứa các thư viện như `fastapi`, `uvicorn`, và các thư viện inference của mô hình bạn.
+
+---
+
+## 3. Chạy server FastAPI
+
+Trong môi trường Conda đã kích hoạt:
+
+```bash
+uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload
+```
+
+* `app.main:app` là đường dẫn tới `FastAPI()` instance trong project của ông.
+* Mở trình duyệt hoặc postman truy cập: `http://localhost:8000/docs` để xem API docs.
+
+---
+
+## 4. Chạy inference trực tiếp
+
+Ví dụ gọi API `POST /predict`:
+
+```bash
+curl -X POST "http://localhost:8000/predict" -H "Content-Type: application/json" -d '{"input": "your input data"}'
+```
+
+---
+
+## 5. Build Docker Image
+
+1. Tạo file `Dockerfile` ví dụ:
+
+```dockerfile
+# Dockerfile
+FROM python:3.10-slim
+
+WORKDIR /app
+
+# Copy requirements và cài đặt
+COPY requirements.txt .
+RUN pip install --no-cache-dir -r requirements.txt
+
+# Copy code
+COPY . .
+
+# Expose port
+EXPOSE 8000
+
+# Lệnh chạy server
+CMD ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000"]
+```
+
+2. Build Docker image:
+
+```bash
+docker build -t fastapi-inference:latest .
+```
+
+3. Chạy Docker container:
+
+```bash
+docker run -d -p 8000:8000 fastapi-inference:latest
+```
+
+* Truy cập: `http://localhost:8000/docs`
+
+---
+
+## 6. Optional: Docker Compose
+
+Tạo `docker-compose.yml`:
+
+```yaml
+version: "3.9"
+
+services:
+  fastapi-app:
+    build: .
+    ports:
+      - "8000:8000"
+    environment:
+      - PYTHONUNBUFFERED=1
+```
+
+Chạy:
+
+```bash
+docker-compose up --build
+```
+
+---
+
+## 7. Kết luận
+
+* Môi trường Conda giúp quản lý Python 3.10 và dependencies.
+* Docker giúp deploy nhanh và nhất quán trên Linux server.
+* Server FastAPI sẵn sàng phục vụ **inference** thông qua API endpoint.
+
+---
+
+Nếu muốn, tôi có thể viết luôn **phiên bản README tối giản, chuẩn công ty**, vừa dễ copy, vừa đủ chạy inference trên Docker mà không cần nhiều giải thích. Ông có muốn tôi làm luôn không?
+
 
 <!-- # 📦 LUNA25 Baseline Algorithm
 Thank you for participating in the [LUNA25 Challenge](https://luna25.grand-challenge.org/).
